@@ -55,6 +55,7 @@ function buildClaudeEnvironment() {
 
   // Build PATH like zsh profile does
   const fullPath = [
+    path.join(HOME, '.npm-global/bin'),  // npm global binaries (claude CLI)
     '/opt/homebrew/bin',
     '/opt/homebrew/opt/python@3.12/bin',
     '/opt/homebrew/opt/libpq/bin',
