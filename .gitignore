@@ -7,6 +7,9 @@ package-lock.json
 .env.local
 .env.*.local
 
+# Credentials directory (contains API keys and secrets!)
+.credentials/
+
 # Generated audio files
 voice-app/audio/*.mp3
 voice-app/audio/*.wav

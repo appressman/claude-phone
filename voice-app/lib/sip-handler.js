@@ -10,8 +10,8 @@ const READY_BEEP_URL = 'http://127.0.0.1:3000/static/ready-beep.wav';
 const GOTIT_BEEP_URL = 'http://127.0.0.1:3000/static/gotit-beep.wav';
 const HOLD_MUSIC_URL = 'http://127.0.0.1:3000/static/hold-music.mp3';
 
-// Default voice ID (Morpheus)
-const DEFAULT_VOICE_ID = 'JAgnJveGGUh4qy4kh6dF';
+// Default voice ID (Eve) - fallback if device not found
+const DEFAULT_VOICE_ID = 'cgSgspJ2msm6clMCkdW9';
 
 // Claude Code-style thinking phrases
 const THINKING_PHRASES = [
@@ -50,7 +50,8 @@ function extractCallerId(req) {
  */
 function extractDialedExtension(req) {
   var to = req.get("To") || "";
-  var match = to.match(/sip:(\d+)@/);
+  // Match alphanumeric extensions (e.g., "claude", "9000", "eve-phone")
+  var match = to.match(/sip:([\w-]+)@/);
   if (match) {
     return match[1];
   }

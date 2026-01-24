@@ -52,12 +52,19 @@ async function initiateOutboundCall(srf, mediaServer, options) {
     // Get local SDP from FreeSWITCH
     const localSdp = endpoint.local.sdp;
 
-    // Format SIP URI for 3CX
-    // Remove '+' from E.164 format for SIP URI
-    // Internal extensions: dial as-is. External (E.164 with +): add 9 prefix for PSTN
-    const isExternal = to.startsWith('+');
-    const phoneNumber = isExternal ? '9' + to.replace(/^\+1?/, '') : to;
+    // Format SIP URI based on trunk type
     const sipTrunkHost = process.env.SIP_TRUNK_HOST || '10.70.7.50';
+    const isTwilio = sipTrunkHost.includes('twilio.com');
+    const isExternal = to.startsWith('+');
+
+    // For Twilio: use E.164 format WITH + prefix
+    // For 3CX: add 9 prefix for external calls
+    let phoneNumber;
+    if (isTwilio) {
+      phoneNumber = to; // Twilio wants full E.164 with +
+    } else {
+      phoneNumber = isExternal ? '9' + to.replace(/^\+1?/, '') : to; // 3CX format
+    }
     const externalIp = process.env.EXTERNAL_IP || '10.70.7.81';
     const defaultCallerId = callerId || process.env.DEFAULT_CALLER_ID || '+15551234567';
 
@@ -75,12 +82,21 @@ async function initiateOutboundCall(srf, mediaServer, options) {
     });
 
     // STEP 2: Create UAC (outbound call) with Early Offer
-    // Use device extension and display name if available, otherwise fall back to callerId
-    const fromExtension = deviceConfig ? deviceConfig.extension : defaultCallerId.replace('+', '');
+    // For Twilio: MUST use Twilio phone number as caller ID (not extension)
+    // For 3CX: Use device extension with display name
     const displayName = deviceConfig ? deviceConfig.name : null;
-    const fromHeader = displayName
-      ? '"' + displayName + '" <sip:' + fromExtension + '@' + sipTrunkHost + '>'
-      : '<sip:' + fromExtension + '@' + sipTrunkHost + '>';
+    let fromHeader;
+    if (isTwilio) {
+      // Twilio requires the caller ID to be a valid Twilio number
+      fromHeader = displayName
+        ? '"' + displayName + '" <sip:' + defaultCallerId + '@' + sipTrunkHost + '>'
+        : '<sip:' + defaultCallerId + '@' + sipTrunkHost + '>';
+    } else {
+      const fromExtension = deviceConfig ? deviceConfig.extension : defaultCallerId.replace('+', '');
+      fromHeader = displayName
+        ? '"' + displayName + '" <sip:' + fromExtension + '@' + sipTrunkHost + '>'
+        : '<sip:' + fromExtension + '@' + sipTrunkHost + '>';
+    }
 
     const uacOptions = {
       localSdp: localSdp,
