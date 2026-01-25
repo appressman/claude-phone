@@ -1,0 +1,9 @@
+{
+  "contacts": {
+    "adam": {
+      "name": "Adam",
+      "mobile": "+17038502072",
+      "aliases": ["me", "myself"]
+    }
+  }
+}
