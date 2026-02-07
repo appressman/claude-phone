@@ -34,8 +34,8 @@ const PORT = process.env.PORT || 3333;
  * with your zsh profile fully loaded.
  */
 function buildClaudeEnvironment() {
-  const HOME = process.env.HOME || '/Users/networkchuck';
-  const PAI_DIR = path.join(HOME, '.claude');
+  const HOME = process.env.HOME || '/home/adam';
+  const PAI_DIR = '/home/adam/pai';
 
   // Load ~/.claude/.env (all API keys)
   const envPath = path.join(PAI_DIR, '.env');
@@ -53,21 +53,16 @@ function buildClaudeEnvironment() {
     }
   }
 
-  // Build PATH like zsh profile does
+  // Build PATH for Linux VPS environment
   const fullPath = [
-    path.join(HOME, '.npm-global/bin'),  // npm global binaries (claude CLI)
-    '/opt/homebrew/bin',
-    '/opt/homebrew/opt/python@3.12/bin',
-    '/opt/homebrew/opt/libpq/bin',
     path.join(HOME, '.bun/bin'),
+    path.join(HOME, '.npm-global/bin'),
     path.join(HOME, '.local/bin'),
     path.join(HOME, '.pyenv/bin'),
     path.join(HOME, '.pyenv/shims'),
     path.join(HOME, 'go/bin'),
     '/usr/local/go/bin',
     path.join(HOME, 'bin'),
-    path.join(HOME, '.lmstudio/bin'),
-    path.join(HOME, '.opencode/bin'),
     '/usr/local/bin',
     '/usr/bin',
     '/bin',
@@ -82,7 +77,7 @@ function buildClaudeEnvironment() {
     HOME,
     PAI_DIR,
     PAI_HOME: HOME,
-    DA: 'Morpheus',
+    DA: 'Eve',
     DA_COLOR: 'purple',
     GOROOT: '/usr/local/go',
     GOPATH: path.join(HOME, 'go'),
@@ -151,7 +146,9 @@ function runClaudeOnce({ fullPrompt, callId, timestamp }) {
   const args = [
     '--dangerously-skip-permissions',
     '-p', fullPrompt,
-    '--model', CLAUDE_MODEL
+    '--model', CLAUDE_MODEL,
+    '--mcp-config', '/home/adam/pai/.claude/mcp-configs/mcp-base.json',
+    '--mcp-config', '/home/adam/pai/.claude/mcp-configs/mcp-personal.json'
   ];
 
   if (callId) {
@@ -169,7 +166,8 @@ function runClaudeOnce({ fullPrompt, callId, timestamp }) {
     const claude = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
-      env: claudeEnv
+      env: claudeEnv,
+      cwd: '/home/adam/pai'
     });
 
     let stdout = '';
