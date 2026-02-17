@@ -11,6 +11,10 @@ const logger = require('./logger');
 const { OutboundSession, getSession, getAllSessions } = require('./outbound-session');
 const { initiateOutboundCall, playMessage, hangupCall } = require('./outbound-handler');
 const { runConversationLoop } = require('./conversation-loop');
+const { detectVoicemail } = require('./voicemail-detector');
+
+// Numbers that default to voicemailDetection: true
+const VOICEMAIL_DETECTION_DEFAULTS = ['+17038502072'];
 
 // Dependencies injected via setupRoutes()
 var srf = null;
@@ -79,6 +83,10 @@ function validateRequest(body) {
     }
   }
 
+  if (body.voicemailDetection !== undefined && typeof body.voicemailDetection !== 'boolean') {
+    return { valid: false, error: 'Field "voicemailDetection" must be a boolean' };
+  }
+
   if (body.timeoutSeconds !== undefined) {
     var timeout = Number(body.timeoutSeconds);
     if (!Number.isInteger(timeout) || timeout < 5 || timeout > 120) {
@@ -130,6 +138,14 @@ router.post('/outbound-call', async function(req, res) {
     var callerId = req.body.callerId;
     var timeoutSeconds = req.body.timeoutSeconds || 30;
     var webhookUrl = req.body.webhookUrl;
+
+    // Voicemail detection: explicit param, or default true for known numbers
+    var voicemailDetection = req.body.voicemailDetection;
+    if (voicemailDetection === undefined) {
+      voicemailDetection = VOICEMAIL_DETECTION_DEFAULTS.some(function(num) {
+        return to === num || to.replace(/^\+1/, '') === num.replace(/^\+1/, '');
+      });
+    }
 
     // Look up device configuration
     var deviceConfig = null;
@@ -198,7 +214,8 @@ router.post('/outbound-call', async function(req, res) {
       mode: mode,
       device: deviceConfig ? deviceConfig.name : 'default',
       messageLength: message.length,
-      hasContext: !!context
+      hasContext: !!context,
+      voicemailDetection: voicemailDetection
     });
 
     // Return immediately with callId
@@ -228,6 +245,22 @@ router.post('/outbound-call', async function(req, res) {
 
         session.setDialog(dialog);
         session.setEndpoint(endpoint);
+
+        // Voicemail detection: listen for greeting before speaking
+        if (voicemailDetection && audioForkServer) {
+          session.transition('DETECTING');
+
+          var detection = await detectVoicemail(endpoint, audioForkServer, callId, {
+            wsPort: wsPort
+          });
+
+          logger.info('Voicemail detection result', {
+            callId: callId,
+            isVoicemail: detection.isVoicemail,
+            waitedMs: detection.waitedMs
+          });
+        }
+
         session.transition('PLAYING');
 
         // Play the initial message with device voice

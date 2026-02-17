@@ -2,8 +2,9 @@
  * Outbound Call Session Management
  * State machine and tracking for outbound calls
  *
- * Announce Mode:      QUEUED → DIALING → PLAYING → COMPLETED/FAILED
- * Conversation Mode:  QUEUED → DIALING → PLAYING → CONVERSING → COMPLETED/FAILED
+ * Announce Mode:      QUEUED → DIALING → [DETECTING] → PLAYING → COMPLETED/FAILED
+ * Conversation Mode:  QUEUED → DIALING → [DETECTING] → PLAYING → CONVERSING → COMPLETED/FAILED
+ * (DETECTING state is optional, used when voicemailDetection is enabled)
  */
 
 const { EventEmitter } = require('events');
