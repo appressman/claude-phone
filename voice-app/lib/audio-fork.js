@@ -177,8 +177,8 @@ class AudioForkSession extends EventEmitter {
     if (!this._pcmEndian) this._pcmEndian = this._detectEndian(buf);
     const stats = pcmStats(buf, this._pcmEndian);
 
-    const rmsThreshold = 650;
-    const maxThreshold = 2200;
+    const rmsThreshold = 1500;
+    const maxThreshold = 4000;
 
     const looksSilent = stats.nearZeroRatio > 0.94 && stats.rms < rmsThreshold;
     if (looksSilent) return false;

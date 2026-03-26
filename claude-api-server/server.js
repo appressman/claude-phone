@@ -84,8 +84,8 @@ function buildClaudeEnvironment() {
     PYENV_ROOT: path.join(HOME, '.pyenv'),
     BUN_INSTALL: path.join(HOME, '.bun'),
     // CRITICAL: These tell Claude Code it's running in the proper environment
-    CLAUDECODE: '1',
-    CLAUDE_CODE_ENTRYPOINT: 'cli',
+    // CLAUDECODE: '1',  // REMOVED - prevents nested claude invocation
+    // CLAUDE_CODE_ENTRYPOINT: 'cli',  // REMOVED - not needed for spawned CLI
   };
 
   // CRITICAL: Remove ANTHROPIC_API_KEY so Claude CLI uses subscription auth
@@ -144,7 +144,10 @@ function runClaudeOnce({ fullPrompt, callId, timestamp }) {
   const startTime = Date.now();
 
   const args = [
-    '--dangerously-skip-permissions',
+    "--dangerously-skip-permissions",
+    "--system-prompt", "You are Eve, a voice assistant. Answer questions concisely in 1-2 sentences. Use tools when needed. Do NOT use any special formatting, headers, or emoji. Just answer naturally.",
+    "--output-format", "json",
+    "--disable-slash-commands",
     '-p', fullPrompt,
     '--model', CLAUDE_MODEL,
     '--mcp-config', '/home/adam/pai/.claude/mcp-configs/mcp-base.json',
