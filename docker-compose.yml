@@ -56,6 +56,8 @@ services:
       - ./voice-app/audio:/app/audio
       # Device configurations
       - ./voice-app/config:/app/config
+      # Persistent call log database
+      - ./voice-app/data:/data
     depends_on:
       - drachtio
       - freeswitch

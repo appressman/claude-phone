@@ -43,8 +43,9 @@ function getRandomThinkingPhrase() {
 }
 
 function isGoodbye(transcript) {
-  const lower = transcript.toLowerCase().trim();
-  const goodbyePhrases = ['goodbye', 'good bye', 'bye', 'hang up', 'end call', "that's all", 'thats all'];
+  // Normalize: lowercase, strip punctuation and newlines, collapse whitespace
+  const lower = transcript.toLowerCase().replace(/[.,!?\n]/g, '').replace(/-/g, '').trim();
+  const goodbyePhrases = ['goodbye', 'good bye', 'goodby', 'bye', 'hang up', 'end call', "thats all", "that's all"];
   return goodbyePhrases.some(phrase => {
     return lower === phrase || lower.includes(` ${phrase}`) ||
            lower.startsWith(`${phrase} `) || lower.endsWith(` ${phrase}`);
@@ -134,7 +135,8 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
     initialContext = null,
     skipGreeting = false,
     deviceConfig = null,
-    maxTurns = 20
+    maxTurns = 20,
+    cdrDatabase = null
   } = options;
 
   // Extract devicePrompt and voiceId from deviceConfig (for Cephanie etc)
@@ -315,6 +317,11 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
 
       logger.info('Transcribed', { callUuid, transcript });
 
+      // Log caller transcript to CDR
+      if (cdrDatabase && transcript && transcript.trim().length >= 2) {
+        cdrDatabase.logTranscript({ callUuid, turnNumber: turnCount, speaker: 'caller', text: transcript });
+      }
+
       // Handle empty transcription
       if (!transcript || transcript.trim().length < 2) {
         const clarifyUrl = await ttsService.generateSpeech(
@@ -382,6 +389,11 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
       const voiceLine = extractVoiceLine(claudeResponse);
       logger.info('Voice line', { callUuid, voiceLine });
 
+      // Log Eve response to CDR
+      if (cdrDatabase) {
+        cdrDatabase.logTranscript({ callUuid, turnNumber: turnCount, speaker: 'eve', text: voiceLine });
+      }
+
       const responseUrl = await ttsService.generateSpeech(voiceLine, voiceId);
       if (callActive) await endpoint.play(responseUrl);
 
@@ -397,6 +409,14 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
       await endpoint.play(maxUrl);
     }
 
+    // Log call end to CDR
+    if (cdrDatabase) {
+      let endReason = 'normal';
+      if (turnCount >= maxTurns) endReason = 'max_turns';
+      else if (!callActive) endReason = 'remote_hangup';
+      cdrDatabase.endCall({ callUuid, status: 'completed', turnCount, endReason });
+    }
+
     logger.info('Conversation loop ended normally', { callUuid, turns: turnCount });
 
   } catch (error) {
@@ -405,6 +425,11 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
       error: error.message,
       stack: error.stack
     });
+
+    // Log error to CDR
+    if (cdrDatabase) {
+      cdrDatabase.endCall({ callUuid, status: 'error', turnCount: 0, endReason: error.message });
+    }
 
     try {
       if (session) session.setCaptureEnabled(false);

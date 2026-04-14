@@ -25,6 +25,7 @@ var whisperClient = null;
 var claudeBridge = null;
 var ttsService = null;
 var wsPort = 3001;
+var cdrDatabase = null;
 
 /**
  * Validate phone number format
@@ -246,6 +247,17 @@ router.post('/outbound-call', async function(req, res) {
         session.setDialog(dialog);
         session.setEndpoint(endpoint);
 
+        // Log outbound call start to CDR
+        if (cdrDatabase) {
+          cdrDatabase.startCall({
+            callUuid: callId,
+            direction: 'outbound',
+            callerId: callerId || process.env.DEFAULT_CALLER_ID || 'unknown',
+            dialedExt: to,
+            deviceName: deviceConfig ? deviceConfig.name : 'default'
+          });
+        }
+
         // Voicemail detection: listen for greeting before speaking
         if (voicemailDetection && audioForkServer) {
           session.transition('DETECTING');
@@ -269,6 +281,9 @@ router.post('/outbound-call', async function(req, res) {
 
         if (mode === 'announce') {
           await hangupCall(dialog, endpoint, callId);
+          if (cdrDatabase) {
+            cdrDatabase.endCall({ callUuid: callId, status: 'completed', turnCount: 0, endReason: 'announce_complete' });
+          }
           session.transition('COMPLETED', 'announce_complete');
 
         } else if (mode === 'conversation') {
@@ -287,6 +302,7 @@ router.post('/outbound-call', async function(req, res) {
               ttsService: ttsService,
               wsPort: wsPort,
               deviceConfig: deviceConfig,
+              cdrDatabase: cdrDatabase,
               initialContext: message,
               context: context,           // NEW: pass structured context
               skipGreeting: true,
@@ -318,6 +334,11 @@ router.post('/outbound-call', async function(req, res) {
         else if (error.message === 'no_answer') reason = 'no_answer';
         else if (error.message === 'not_found') reason = 'not_found';
         else if (error.message === 'service_unavailable') reason = 'service_unavailable';
+
+        // Log failed outbound call to CDR
+        if (cdrDatabase) {
+          cdrDatabase.endCall({ callUuid: callId, status: 'failed', turnCount: 0, endReason: reason });
+        }
 
         session.transition('FAILED', reason);
       }
@@ -428,6 +449,7 @@ function setupRoutes(deps) {
   claudeBridge = deps.claudeBridge || null;
   ttsService = deps.ttsService || null;
   wsPort = deps.wsPort || 3001;
+  cdrDatabase = deps.cdrDatabase || null;
 
   var conversationReady = !!(audioForkServer && whisperClient && claudeBridge && ttsService);
 

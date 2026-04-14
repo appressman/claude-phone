@@ -27,6 +27,26 @@ var MultiRegistrar = require("./lib/multi-registrar");
 var connectionRetry = require("./lib/connection-retry");
 var connectWithRetry = connectionRetry.connectWithRetry;
 
+// Call logging and rate limiting
+var CdrDatabase = require("./lib/cdr-database");
+var RateLimiter = require("./lib/rate-limiter");
+
+// Initialize CDR database
+var cdrDatabase = null;
+try {
+  cdrDatabase = new CdrDatabase("/data/calls.db");
+} catch (err) {
+  console.error("[CDR] Failed to initialize database: " + err.message);
+  console.error("[CDR] Call logging will be disabled");
+}
+
+// Initialize rate limiter (5 calls per 60s, whitelist Adam's numbers)
+var rateLimiter = new RateLimiter({
+  maxCalls: 5,
+  windowMs: 60000,
+  whitelist: ["+17038502072", "+15715206268", "7038502072", "5715206268"]
+});
+
 // Import outbound calling routes
 var outboundModule = require("./lib/outbound-routes");
 var outboundRouter = outboundModule.router;
@@ -204,7 +224,8 @@ function initializeServers() {
     whisperClient: whisperClient,
     claudeBridge: claudeBridge,
     ttsService: ttsService,
-    wsPort: config.ws_port
+    wsPort: config.ws_port,
+    cdrDatabase: cdrDatabase
   });
 
   httpServer.app.use("/api", outboundRouter);
@@ -217,6 +238,32 @@ function initializeServers() {
 
   httpServer.app.use("/api", queryRouter);
   console.log("[" + new Date().toISOString() + "] QUERY API enabled (/api/query, /api/devices)");
+
+  // ========== CALL HISTORY API ROUTES ==========
+  if (cdrDatabase) {
+    httpServer.app.get("/api/calls/history", function(req, res) {
+      var limit = parseInt(req.query.limit) || 50;
+      var since = req.query.since || null;
+      var history = cdrDatabase.getHistory({ limit: limit, since: since });
+      res.json({ success: true, count: history.length, calls: history });
+    });
+
+    httpServer.app.get("/api/calls/stats", function(req, res) {
+      var stats = cdrDatabase.getStats();
+      res.json({ success: true, stats: stats });
+    });
+
+    httpServer.app.get("/api/calls/:callUuid/transcript", function(req, res) {
+      var transcript = cdrDatabase.getTranscript(req.params.callUuid);
+      res.json({ success: true, transcript: transcript });
+    });
+
+    httpServer.app.get("/api/rate-limit/status", function(req, res) {
+      res.json({ success: true, status: rateLimiter.getStatus() });
+    });
+
+    console.log("[" + new Date().toISOString() + "] CDR API enabled (/api/calls/history, /api/calls/stats)");
+  }
 
   // Finalize HTTP server
   httpServer.finalize();
@@ -242,6 +289,8 @@ function checkReadyState() {
         audioForkServer: audioForkServer,
         mediaServer: mediaServer,
         deviceRegistry: deviceRegistry,
+        rateLimiter: rateLimiter,
+        cdrDatabase: cdrDatabase,
         config: config,
         whisperClient: whisperClient,
         claudeBridge: claudeBridge,
@@ -264,6 +313,8 @@ function shutdown(signal) {
   if (registrar) registrar.stop();
   if (httpServer) httpServer.close();
   if (audioForkServer) audioForkServer.stop();
+  if (cdrDatabase) cdrDatabase.close();
+  if (rateLimiter) rateLimiter.stop();
   if (mediaServer) mediaServer.disconnect();
   srf.disconnect();
   setTimeout(function() { process.exit(0); }, 1000);
