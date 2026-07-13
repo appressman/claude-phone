@@ -13,8 +13,15 @@ const { initiateOutboundCall, playMessage, hangupCall } = require('./outbound-ha
 const { runConversationLoop } = require('./conversation-loop');
 const { detectVoicemail } = require('./voicemail-detector');
 
-// Numbers that default to voicemailDetection: true
-const VOICEMAIL_DETECTION_DEFAULTS = ['+17038502072'];
+// Numbers that default to voicemailDetection: true.
+// EMPTY by design (2026-07-13): voicemail detection runs its own forkAudioStart/Stop
+// before the conversation loop starts a second fork, and mod_audio_fork is one-fork-
+// per-channel — the second start returns "-ERR Operation Failed", killing outbound
+// conversation mode (inbound never runs detection, which is why it worked). Detection
+// also currently false-positives on a live "Hello" and its result is not used to branch,
+// so defaulting it on was all cost and no benefit. Callers can still opt in explicitly
+// via voicemailDetection:true once the detect->converse fork handoff is fixed (86bawvf6r).
+const VOICEMAIL_DETECTION_DEFAULTS = [];
 
 // Dependencies injected via setupRoutes()
 var srf = null;

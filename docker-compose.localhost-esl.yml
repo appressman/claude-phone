@@ -1,0 +1,24 @@
+# S5b — telephony localhost-rebind overlay (INERT until explicitly applied).
+# Deliberately NOT named docker-compose.override.yml so it does NOT auto-apply.
+#
+# drachtio admin (9022): rebind via config file-mount (drachtio does not self-template). WORKS.
+#
+# freeswitch ESL (8021): the drachtio-freeswitch-mrf image's /entrypoint.sh UNCONDITIONALLY
+# runs `sed ... listen-ip value="0.0.0.0"` at every boot, and exposes no env/flag for the IP
+# (only -e port, -p password). A single-file bind-mount of event_socket.conf.xml crash-loops
+# (entrypoint sed -i rename fails on a bind mount). So instead we bind-mount a PATCHED
+# entrypoint (entrypoint.localhost.sh = stock with that one line flipped to 127.0.0.1). The
+# entrypoint does not sed itself, so a read-only single-file mount is safe. The ESL config it
+# rewrites lives inside the container fs (writable), so its own sed still works.
+# freeswitch is host-networked and voice-app connects via FREESWITCH_HOST=127.0.0.1, so
+# loopback binding keeps local wiring intact while dropping public exposure.
+#
+# Apply:   docker compose -f docker-compose.yml -f docker-compose.localhost-esl.yml up -d
+# Roll back: docker compose -f docker-compose.yml up -d --force-recreate
+services:
+  drachtio:
+    volumes:
+      - ./telephony-localhost-override/drachtio.conf.xml:/etc/drachtio.conf.xml:ro
+  freeswitch:
+    volumes:
+      - ./telephony-localhost-override/entrypoint.localhost.sh:/entrypoint.sh:ro

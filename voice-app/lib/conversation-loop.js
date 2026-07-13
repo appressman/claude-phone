@@ -172,15 +172,15 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
       await endpoint.play(greetingUrl);
     }
 
-    // Prime Claude with context if this is an outbound call (NON-BLOCKING)
-    // Fire-and-forget: we don't use the response, just establishing session context
-    if (initialContext && callActive) {
-      logger.info('Priming Claude with outbound context (non-blocking)', { callUuid });
-      claudeBridge.query(
-        `[SYSTEM CONTEXT - DO NOT REPEAT]: You just called the user to tell them: "${initialContext}". They have answered. Now listen to their response and help them.`,
-        { callId: callUuid, devicePrompt: devicePrompt, isSystemPrime: true }
-      ).catch(err => logger.warn('Prime query failed', { callUuid, error: err.message }));
-    }
+    // Outbound context is injected into the FIRST turn's Claude query (see below) rather
+    // than sent as a separate non-blocking "prime". The old prime raced turn 1: its
+    // session-create (~26s) had not committed when turn 1 tried to --resume the same
+    // session, so the first outbound turn failed "No conversation found" and Eve said
+    // "I encountered an unexpected error." Folding the context into turn 1 makes turn 1
+    // CREATE the session with context — no second session, no race. (ClickUp 86baww8a8)
+    let pendingContext = (initialContext && callActive)
+      ? `[SYSTEM CONTEXT - DO NOT REPEAT]: You just called the user to tell them: "${initialContext}". They have answered. Now listen to their response and help them.`
+      : null;
 
     // Check if call is still active before starting audio fork
     if (!callActive) {
@@ -243,7 +243,7 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
     if (audioForkServer.emit) {
       audioForkServer.emit('session', session);
     }
-    console.log('[AUDIO] New session for call ' + callUuid);
+    logger.info('Audio fork session established', { callUuid });
 
     // Main conversation loop
     let turnCount = 0;
@@ -361,10 +361,15 @@ async function runConversationLoop(endpoint, dialog, callUuid, options) {
         musicPlaying = true;
       }
 
-      // 3. Query Claude
+      // 3. Query Claude. On the first real turn of an outbound call, prepend the call
+      // context so THIS query creates the session with context (no separate prime -> no race).
       logger.info('Querying Claude', { callUuid });
+      const queryText = pendingContext
+        ? `${pendingContext}\n\nThe user just said: ${transcript}`
+        : transcript;
+      pendingContext = null; // inject once, on the first real query only
       const claudeResponse = await claudeBridge.query(
-        transcript,
+        queryText,
         { callId: callUuid, devicePrompt: devicePrompt }
       );
 
