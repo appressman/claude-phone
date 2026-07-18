@@ -13,7 +13,7 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1';
 
 // Default voice IDs (can be customized)
-const DEFAULT_VOICE_ID = 'JAgnJveGGUh4qy4kh6dF'; // Morpheus voice
+const DEFAULT_VOICE_ID = 'fTtv3eikoepIosk8dTZ5'; // Eve voice (verified in this ElevenLabs account; Morpheus JAgnJveGGUh4qy4kh6dF 404s here)
 const MODEL_ID = 'eleven_turbo_v2'; // Fast, low-latency model
 
 // Audio output directory (set via setAudioDir)
@@ -53,6 +53,11 @@ function generateFilename(text) {
  */
 async function generateSpeech(text, voiceId = DEFAULT_VOICE_ID) {
   const startTime = Date.now();
+
+  // Callers (e.g. outbound-handler) may pass an explicit null when no device
+  // voice is set; a default parameter only covers undefined, so coerce here to
+  // avoid sending "/text-to-speech/null" (404 voice_not_found -> silent call).
+  voiceId = voiceId || DEFAULT_VOICE_ID;
 
   try {
     if (!ELEVENLABS_API_KEY) {
