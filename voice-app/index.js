@@ -93,6 +93,7 @@ var mediaServer = null;
 var httpServer = null;
 var audioForkServer = null;
 var registrar = null;
+var cleanupInterval = null;
 var drachtioConnected = false;
 var freeswitchConnected = false;
 var isReady = false;
@@ -193,9 +194,7 @@ connectWithRetry(connectToFreeswitch, {
 // Initialize servers
 function initializeServers() {
   var fs = require("fs");
-  if (!fs.existsSync(config.audio_dir)) {
-    fs.mkdirSync(config.audio_dir, { recursive: true });
-  }
+  fs.mkdirSync(config.audio_dir, { recursive: true });
 
   // HTTP server for TTS audio
   httpServer = createHttpServer(config.audio_dir, config.http_port);
@@ -269,7 +268,7 @@ function initializeServers() {
   httpServer.finalize();
 
   // Cleanup old files periodically
-  setInterval(function() {
+  cleanupInterval = setInterval(function() {
     cleanupOldFiles(config.audio_dir, 5 * 60 * 1000);
   }, 60 * 1000);
 }
@@ -291,12 +290,10 @@ function checkReadyState() {
         deviceRegistry: deviceRegistry,
         rateLimiter: rateLimiter,
         cdrDatabase: cdrDatabase,
-        config: config,
         whisperClient: whisperClient,
         claudeBridge: claudeBridge,
         ttsService: ttsService,
-        wsPort: config.ws_port,
-        externalIp: config.external_ip
+        wsPort: config.ws_port
       }).catch(function(err) {
         console.error("[" + new Date().toISOString() + "] CALL Error: " + err.message);
       });
@@ -310,6 +307,7 @@ function checkReadyState() {
 // Graceful shutdown
 function shutdown(signal) {
   console.log("\n[" + new Date().toISOString() + "] Received " + signal + ", shutting down...");
+  if (cleanupInterval) clearInterval(cleanupInterval);
   if (registrar) registrar.stop();
   if (httpServer) httpServer.close();
   if (audioForkServer) audioForkServer.stop();
@@ -322,3 +320,26 @@ function shutdown(signal) {
 
 process.on("SIGTERM", function() { shutdown("SIGTERM"); });
 process.on("SIGINT", function() { shutdown("SIGINT"); });
+
+// Keepalive + exit diagnostics (added 2026-07-23).
+// Root cause under investigation: the process was exiting cleanly (code 0) every ~10 min
+// because the event loop silently drained (some long-lived handle closed), and
+// restart:unless-stopped relaunched it. This referenced interval keeps the loop alive so
+// it can no longer drain, and logs active-handle counts each minute so we can see WHICH
+// handle disappears around the ~10-min mark.
+setInterval(function() {
+  try {
+    var h = (process._getActiveHandles && process._getActiveHandles()) || [];
+    var types = h.map(function(x) { return x && x.constructor ? x.constructor.name : "?"; }).sort();
+    console.log("[" + new Date().toISOString() + "] HEARTBEAT activeHandles=" + h.length + " types=" + types.join(","));
+  } catch (e) { console.error("[heartbeat] " + e.message); }
+}, 60000);
+process.on("beforeExit", function(code) {
+  console.error("[" + new Date().toISOString() + "] BEFOREEXIT code=" + code + " (event loop emptied)");
+});
+process.on("uncaughtException", function(err) {
+  console.error("[" + new Date().toISOString() + "] UNCAUGHTEXCEPTION " + (err && err.stack ? err.stack : err));
+});
+process.on("unhandledRejection", function(reason) {
+  console.error("[" + new Date().toISOString() + "] UNHANDLEDREJECTION " + (reason && reason.stack ? reason.stack : reason));
+});
