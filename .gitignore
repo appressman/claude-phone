@@ -7,6 +7,14 @@ package-lock.json
 .env.local
 .env.*.local
 
+# Timestamped backups. These rules existed for .env but not for the .env.bak-*
+# files that the auth and config tooling leaves behind, so a stray `git add -A`
+# would have published DRACHTIO_SECRET, FREESWITCH_SECRET and the SIP trunk
+# config. The parent PAI repo has carried this rule since its own near-miss.
+*.bak
+*.bak-*
+*.backup
+
 # Credentials directory (contains API keys and secrets!)
 .credentials/
 

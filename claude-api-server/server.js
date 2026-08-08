@@ -97,6 +97,9 @@ function buildClaudeEnvironment() {
 
 // Pre-build the environment once at startup
 const claudeEnv = buildClaudeEnvironment();
+// Mark voice-backend spawns so PAI SessionEnd hooks (session-summary capture) skip themselves.
+// A per-voice-turn session summary is wrong and the hook cancellation fails the whole call.
+claudeEnv.PAI_VOICE_BACKEND = '1';
 console.log('[STARTUP] Loaded environment with', Object.keys(claudeEnv).length, 'variables');
 console.log('[STARTUP] PATH includes:', claudeEnv.PATH.split(':').slice(0, 5).join(', '), '...');
 
@@ -110,7 +113,8 @@ console.log('[STARTUP] API keys loaded:', apiKeys.join(', '));
 const sessions = new Map();
 
 // Model selection - Sonnet for balanced speed/quality
-const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+// Use the 'sonnet' alias (maps to current Sonnet) — pinned dated ids get deprecated and 404.
+const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'sonnet';
 
 function parseClaudeStdout(stdout) {
   // Claude Code CLI may output JSONL; when it does, extract the `result` message.
