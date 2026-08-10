@@ -60,3 +60,11 @@ temp/
 !assets/*.png
 !assets/*.jpg
 voice-app/config/devices.json
+
+# Bun lockfile. This repo keeps lockfiles out of git entirely (see
+# package-lock.json above); a second one would only create drift. Added 2026-08-10.
+bun.lock
+
+# Live call database plus its WAL and SHM sidecars. Runtime state, not source:
+# 4.9 MB and growing, rewritten on every call. Added 2026-08-10.
+voice-app/data/
